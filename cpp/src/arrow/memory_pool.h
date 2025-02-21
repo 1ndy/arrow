@@ -300,6 +300,12 @@ Result<std::string> jemalloc_stats_string(const char* opts = "");
 /// May return NotImplemented if mimalloc is not available.
 ARROW_EXPORT Status mimalloc_memory_pool(MemoryPool** out);
 
+
+/// \brief Return a process-wid memory pool based on WebAssembly Linear Memory
+///
+///
+ARROW_EXPORT Status wasmalloc_memory_pool(MemoryPool** out);
+
 /// \brief Return the names of the backends supported by this Arrow build.
 ARROW_EXPORT std::vector<std::string> SupportedMemoryBackendNames();
 

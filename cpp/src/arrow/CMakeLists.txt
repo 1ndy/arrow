@@ -456,6 +456,11 @@ if(ARROW_MIMALLOC)
     target_link_libraries(${ARROW_MEMORY_POOL_TARGET} PRIVATE mimalloc::mimalloc)
   endforeach()
 endif()
+if(ARROW_WASMALLOC)
+  foreach(ARROW_MEMORY_POOL_TARGET ${ARROW_MEMORY_POOL_TARGETS})
+    target_link_libraries(${ARROW_MEMORY_POOL_TARGET} ${CMAKE_CURRENT_SOURCE_DIR}/../../thirdparty/wasmtime/lib/libwasmtime.a)
+  endforeach()
+endif()
 
 set(ARROW_VENDORED_SRCS
     vendored/base64.cpp

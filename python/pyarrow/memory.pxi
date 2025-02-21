@@ -231,6 +231,17 @@ def mimalloc_memory_pool():
     pool.init(c_pool)
     return pool
 
+def wasmalloc_memory_pool():
+    """
+    Return a memory pool based on WebAssembly Linear Memory
+    """
+
+    cdef:
+        CMemoryPool* c_pool
+        MemoryPool pool = MemoryPool.__new__(MemoryPool)
+    check_status(c_wasmalloc_memory_pool(&c_pool))
+    pool.init(c_pool)
+    return pool
 
 def set_memory_pool(MemoryPool pool):
     """

@@ -413,6 +413,8 @@ cdef extern from "arrow/api.h" namespace "arrow" nogil:
         CMemoryPool** out)
     cdef CStatus c_mimalloc_memory_pool" arrow::mimalloc_memory_pool"(
         CMemoryPool** out)
+    cdef CStatus c_wasmalloc_memory_pool" arrow::wasmalloc_memory_pool"(
+        CMemoryPool** out)
     cdef vector[c_string] c_supported_memory_backends \
         " arrow::SupportedMemoryBackendNames"()
 

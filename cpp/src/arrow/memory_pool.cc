@@ -31,6 +31,10 @@
 #  include <stdlib.h>
 #endif
 
+#ifdef ARROW_WASMALLOC
+  #include "arrow/wasmalloc.h"
+#endif
+
 #include "arrow/buffer.h"
 #include "arrow/io/util_internal.h"
 #include "arrow/result.h"
@@ -70,7 +74,7 @@ namespace {
 constexpr char kDefaultBackendEnvVar[] = "ARROW_DEFAULT_MEMORY_POOL";
 constexpr char kDebugMemoryEnvVar[] = "ARROW_DEBUG_MEMORY_POOL";
 
-enum class MemoryPoolBackend : uint8_t { System, Jemalloc, Mimalloc };
+enum class MemoryPoolBackend : uint8_t { System, Jemalloc, Mimalloc, Wasmalloc };
 
 struct SupportedBackend {
   const char* name;
@@ -94,6 +98,9 @@ const std::vector<SupportedBackend>& SupportedBackends() {
 #endif
 #ifdef ARROW_JEMALLOC
       {"jemalloc", MemoryPoolBackend::Jemalloc},
+#endif
+#ifdef ARROW_WASMALLOC
+      {"wasmalloc", MemoryPoolBackend::Wasmalloc},
 #endif
       {"system", MemoryPoolBackend::System}};
   return backends;
@@ -441,8 +448,32 @@ class MimallocAllocator {
 
   static void PrintStats() { mi_stats_print_out(nullptr, nullptr); }
 };
-
 #endif  // defined(ARROW_MIMALLOC)
+
+#ifdef ARROW_WASMALLOC
+class WasmAllocator {
+  public:
+    static Status AllocateAligned(int64_t size, int64_t alignment, uint8_t** out) {
+      bool result = wasmalloc_allocate_aligned(size, alignment, out);
+      if (!result) {
+        return Status::OutOfMemory("malloc of size ", size, " failed in wasmalloc");
+      } else {
+        return Status::OK();
+      }
+    }
+    static void ReleaseUnused() { return; }
+    static Status ReallocateAligned(int64_t old_size, int64_t new_size, int64_t alignment,
+                                  uint8_t** ptr) {
+      // TODO fix -- currently don't do anything but let it keep using memory
+      return Status::OK();
+
+    }
+    static void DeallocateAligned(uint8_t* ptr, int64_t size, int64_t /*alignment*/) { return; }
+    static void PrintStats() {
+      wasmalloc_print_stats();
+    }
+};
+#endif  // defined(ARROW_WASMALLOC)
 
 }  // namespace
 
@@ -576,6 +607,19 @@ class MimallocDebugMemoryPool
 };
 #endif
 
+#ifdef ARROW_WASMALLOC
+class WasmallocMemoryPool : public BaseMemoryPoolImpl<WasmAllocator> {
+  public:
+    std::string backend_name() const override { return "wasmalloc"; }
+};
+
+class WasmallocDebugMemoryPool
+    : public BaseMemoryPoolImpl<DebugAllocator<WasmAllocator>> {
+  public:
+    std::string backend_name() const override { return "wasmalloc"; }  
+};
+#endif
+
 std::unique_ptr<MemoryPool> MemoryPool::CreateDefault() {
   auto backend = DefaultBackend();
   switch (backend) {
@@ -591,6 +635,11 @@ std::unique_ptr<MemoryPool> MemoryPool::CreateDefault() {
     case MemoryPoolBackend::Mimalloc:
       return IsDebugEnabled() ? std::unique_ptr<MemoryPool>(new MimallocDebugMemoryPool)
                               : std::unique_ptr<MemoryPool>(new MimallocMemoryPool);
+#endif
+#ifdef ARROW_WASMALLOC
+    case MemoryPoolBackend::Wasmalloc:
+      return IsDebugEnabled() ? std::unique_ptr<MemoryPool>(new WasmallocDebugMemoryPool)
+                              : std::unique_ptr<MemoryPool>(new WasmallocMemoryPool);
 #endif
     default:
       ARROW_LOG(FATAL) << "Internal error: cannot create default memory pool";
@@ -631,6 +680,16 @@ static struct GlobalState {
   }
 #endif
 
+#ifdef ARROW_WASMALLOC
+  MemoryPool* wasmalloc_memory_pool() {
+    if (IsDebugEnabled()) {
+      return &wasmalloc_debug_pool_;
+    } else {
+      return &wasmalloc_pool_;
+    }
+  }
+#endif
+
  private:
   std::atomic<bool> finalizing_{false};  // constructed first, destroyed last
 
@@ -643,6 +702,10 @@ static struct GlobalState {
 #ifdef ARROW_MIMALLOC
   MimallocMemoryPool mimalloc_pool_;
   MimallocDebugMemoryPool mimalloc_debug_pool_;
+#endif
+#ifdef ARROW_WASMALLOC
+  WasmallocMemoryPool wasmalloc_pool_;
+  WasmallocMemoryPool wasmalloc_debug_pool_;
 #endif
 } global_state;
 
@@ -666,6 +729,15 @@ Status mimalloc_memory_pool(MemoryPool** out) {
 #endif
 }
 
+Status wasmalloc_memory_pool(MemoryPool** out) {
+#ifdef ARROW_WASMALLOC
+  *out = global_state.wasmalloc_memory_pool();
+  return Status::OK();
+#else
+  return Status::NotImplemented("This Arrow build does not enable wasmalloc");
+#endif
+}
+
 MemoryPool* default_memory_pool() {
   auto backend = DefaultBackend();
   switch (backend) {
@@ -678,6 +750,10 @@ MemoryPool* default_memory_pool() {
 #ifdef ARROW_MIMALLOC
     case MemoryPoolBackend::Mimalloc:
       return global_state.mimalloc_memory_pool();
+#endif
+#ifdef ARROW_WASMALLOC
+    case MemoryPoolBackend::Wasmalloc:
+      return global_state.wasmalloc_memory_pool();
 #endif
     default:
       ARROW_LOG(FATAL) << "Internal error: cannot create default memory pool";

@@ -2322,6 +2322,12 @@ if(ARROW_MIMALLOC)
   set(mimalloc_VENDORED TRUE)
 endif()
 
+if(ARROW_WASMALLOC)
+  message(STATUS "Including Wasmtime for WasmAllocator")
+  add_library(wasmtime STATIC IMPORTED)
+  include_directories("/home/hunter/code/arrow/cpp/thirdparty/wasmtime/include")
+endif()
+
 # ----------------------------------------------------------------------
 # Google gtest
 
