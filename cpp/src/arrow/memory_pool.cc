@@ -454,6 +454,7 @@ class MimallocAllocator {
 class WasmAllocator {
   public:
     static Status AllocateAligned(int64_t size, int64_t alignment, uint8_t** out) {
+      std::cout << "wasmalloc called for " << size << " bytes" << std::endl;
       bool result = wasmalloc_allocate_aligned(size, alignment, out);
       if (!result) {
         return Status::OutOfMemory("malloc of size ", size, " failed in wasmalloc");
@@ -464,11 +465,22 @@ class WasmAllocator {
     static void ReleaseUnused() { return; }
     static Status ReallocateAligned(int64_t old_size, int64_t new_size, int64_t alignment,
                                   uint8_t** ptr) {
-      // TODO fix -- currently don't do anything but let it keep using memory
-      return Status::OK();
-
+      std::cout << "Realloc called for " << old_size << " to " << new_size << std::endl;
+      uint8_t* old_ptr = *ptr;
+      // return Status::OK();
+      // TODO avoid the memcpy if possible
+      bool result = wasmalloc_allocate_aligned(new_size, alignment, ptr);
+      if (!result) {
+        return Status::OutOfMemory("Could not realloc from ", old_size, " to ", new_size);
+      } else {
+        memcpy(*ptr, old_ptr, old_size);
+        wasmalloc_free(old_ptr);
+        return Status::OK();
+      }
     }
-    static void DeallocateAligned(uint8_t* ptr, int64_t size, int64_t /*alignment*/) { return; }
+    static void DeallocateAligned(uint8_t* ptr, int64_t size, int64_t /*alignment*/) { 
+      wasmalloc_free(ptr);
+    }
     static void PrintStats() {
       wasmalloc_print_stats();
     }
