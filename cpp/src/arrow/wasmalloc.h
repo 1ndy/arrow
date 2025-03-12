@@ -13,8 +13,13 @@ webassembly runtime. Uses [tinyalloc](https://github.com/thi-ng/tinyalloc).
 
 */
 
+#define MODULE_FILE_ENV_VAR "ARROW_WASMALLOC_MODULE_FILE"
+
 bool initialized = false;
-const char* moduletxt = "(module (memory (export \"memory\") 65536 65536))";
+char* filename = NULL;
+const char* default_module = "(module (memory (export \"memory\") 65536 65536))";
+
+// default module is just 4 GiB of memory
 wasm_engine_t *engine;
 wasmtime_store_t *store;
 wasmtime_context_t *context;
@@ -24,12 +29,46 @@ uint8_t* memory_addr;
 uint8_t* base;
 uint8_t* end;
 
+void create_default_module(wasm_byte_vec_t* wat) {
+    int default_module_size = strlen(default_module);
+    printf("module size is %d\n", default_module_size);
+    wasm_byte_vec_new_uninitialized(wat, default_module_size);
+    printf("calling strcpy\n");
+    strcpy(wat->data, default_module);
+    printf("done\n");
+}
+
+void read_wat(wasm_byte_vec_t* wat, char* filename) {
+    FILE *watfile;
+    size_t filesize;
+    watfile = fopen(filename, "r");
+    if (watfile == NULL) {
+        printf("Failed to open wat file '%s', using default module\n", filename);
+        return create_default_module(wat);
+    }
+    fseek(watfile, 0L, SEEK_END);
+    filesize = ftell(watfile);
+    fseek(watfile, 0L, SEEK_SET);
+    wasm_byte_vec_new_uninitialized(wat, filesize);
+    if (fread(wat->data, filesize, 1, watfile) != 1) {
+        printf("Failed to load module from '%s', using default module\n", filename);
+        fclose(watfile);
+        return create_default_module(wat);
+    }
+    fclose(watfile);
+}
+
 void wasmalloc_init() {
-    // turn wat into wasm bytes
+    // create a wasm module from a WAT file or use the default memory-only
+    // module
     wasm_byte_vec_t wat;
-    // printf("Initializing wat struct\n");
-    wasm_byte_vec_new_uninitialized(&wat, strlen(moduletxt));
-    strcpy(wat.data, moduletxt);
+    filename = getenv(MODULE_FILE_ENV_VAR);
+    if (filename == NULL) {
+        printf("%s was not set; using default module\n", MODULE_FILE_ENV_VAR);
+        create_default_module(&wat);
+    } else {
+        read_wat(&wat, filename);
+    }
     wasm_byte_vec_t wasm;
     // printf("Converting wat to wasm\n");
     wasmtime_error_t *error = wasmtime_wat2wasm(wat.data, wat.size, &wasm);
@@ -69,10 +108,10 @@ void wasmalloc_init() {
         exit(1);
     }
     memory_addr = (uint8_t*)wasmtime_memory_data(context, &(item.of.memory));
-    // printf("[wasmalloc] have memory ptr at %p\n", memory_addr);
+    printf("[wasmalloc] have memory ptr at %p\n", memory_addr);
 
     base = memory_addr;
-    // printf("wasmalloc has %ld bytes of memory available\n", wasmtime_memory_size(context, &(item.of.memory)) * 64 * 1024);
+    printf("wasmalloc has %ld bytes of memory available\n", wasmtime_memory_size(context, &(item.of.memory)) * 64 * 1024);
     end = base + wasmtime_memory_size(context, &(item.of.memory)) * 64 * 1024; // wasm page size = 64 KiB
     
     ta_init(memory_addr, end, 256, 16, 128);
