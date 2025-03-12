@@ -199,6 +199,7 @@
         "ARROW_ACERO": "ON",
         "ARROW_FILESYSTEM": "ON",
         "ARROW_WASMALLOC": "ON",
+        "ARROW_COMPUTE": "ON",
         "ARROW_MIMALLOC": "OFF",
         "ARROW_RUNTIME_SIMD_LEVEL": "NONE",
         "ARROW_BUILD_UTILITIES": "ON"
